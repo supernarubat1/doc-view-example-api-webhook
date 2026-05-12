@@ -18,7 +18,7 @@ app.use(bodyParser.json({
 
 const PORT = process.env.PORT || 4000;
 const WEBHOOK_SECRET = process.env.SST_WEBHOOK_SECRET || '';
-const ADMIN_API_URL = process.env.SST_API_URL || 'http://localhost:3000';
+const SST_API_URL = process.env.SST_API_URL || 'http://localhost:3000';
 const CUSTOMER_ID = process.env.SST_CUSTOMER_ID || '';
 const SECRET_KEY = process.env.SST_SECRET_KEY || '';
 
@@ -29,7 +29,7 @@ const SECRET_KEY = process.env.SST_SECRET_KEY || '';
 app.get('/api/health-check', async (req: Request, res: Response): Promise<any> => {
   console.log('--- Testing API Health Check ---');
   try {
-    const response = await axios.get(`${ADMIN_API_URL}/api/external/health`, {
+    const response = await axios.get(`${SST_API_URL}/api/external/health`, {
       headers: {
         'X-Customer-ID': CUSTOMER_ID,
         'X-Secret-Key': SECRET_KEY
@@ -98,7 +98,7 @@ async function handleFolderPublished(data: any) {
 
   try {
     // ตัวอย่างการเรียกใช้ External API เพื่อดึงรายละเอียด
-    const response = await axios.get(`${ADMIN_API_URL}/api/external/folders/${folderId}`, {
+    const response = await axios.get(`${SST_API_URL}/api/external/folders/${folderId}`, {
       headers: {
         'X-Customer-ID': CUSTOMER_ID,
         'X-Secret-Key': SECRET_KEY
