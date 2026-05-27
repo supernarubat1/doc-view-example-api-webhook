@@ -2,6 +2,8 @@
 
 โปรเจกต์ตัวอย่าง (Reference Implementation) สำหรับลูกค้าที่ต้องการเชื่อมต่อกับระบบ SST ครอบคลุมทั้งการรับ **Webhook** และการเรียกใช้งาน **External API** ทุก endpoint
 
+> **จุดประสงค์:** ใช้เพื่อทดสอบและทำความเข้าใจการทำงานของ API ก่อนนำไปพัฒนาในระบบจริง ไม่ใช่ Production-ready code
+
 ---
 
 ## 🏗️ โครงสร้างโปรเจกต์
@@ -11,7 +13,7 @@ customer-simulator/
 ├── src/
 │   └── index.ts        # ไฟล์หลัก — รวม Logic ทั้งหมด
 ├── downloads/          # โฟลเดอร์เก็บไฟล์ที่ดาวน์โหลด (สร้างอัตโนมัติ)
-├── .env                # ค่า Credentials (ห้าม commit)
+├── .env                # ค่า Credentials (ห้าม commit ขึ้น Git)
 ├── .env.example        # ตัวอย่างค่า .env
 └── package.json
 ```
@@ -32,15 +34,27 @@ npm install
 cp .env.example .env
 ```
 
-แก้ไขค่าใน `.env`:
+แก้ไขค่าใน `.env` ให้ตรงกับข้อมูลจากหน้า Portal:
 
 ```env
+# URL ของ web-app SST (ค่าเริ่มต้นสำหรับ local)
 SST_API_URL=http://localhost:3000
+
+# Customer ID — ดูได้จากหน้า "ตั้งค่า API" ใน Portal
 SST_CUSTOMER_ID=your_customer_id_here
+
+# Secret Key — ได้รับทางอีเมลหลังจาก Admin อนุมัติ
 SST_SECRET_KEY=your_secret_key_here
+
+# Webhook Secret — ตั้งเองได้ ใช้สำหรับตรวจสอบ Signature ของ Webhook ที่รับเข้ามา
+# ⚠️ ต้องใช้ค่าเดียวกันนี้ตอนตั้งค่า Webhook ผ่าน POST /api/webhook-config
 SST_WEBHOOK_SECRET=your_webhook_secret_here
+
+# พอร์ตที่ simulator จะรัน
 PORT=4000
 ```
+
+> **สำคัญ:** `SST_WEBHOOK_SECRET` คือรหัสที่คุณกำหนดเองสำหรับตรวจสอบว่า Webhook ที่รับเข้ามานั้นมาจาก SST จริงๆ ต้องใช้ค่าเดียวกันทั้งใน `.env` และตอนตั้งค่า Webhook
 
 ### 3. รันระบบ
 
@@ -84,54 +98,45 @@ curl http://localhost:4000/api/health-check
 ### ดึงรายการโฟลเดอร์
 
 ```bash
+# ดึงทุกสถานะ (default)
+curl "http://localhost:4000/api/folders"
+
+# กรองเฉพาะ READY
 curl "http://localhost:4000/api/folders?status=READY&page=1"
 ```
 
-ตัวอย่าง Response:
+**สถานะที่มี:**
 
-```json
-{
-  "data": [
-    {
-      "id": "550e8400-...",
-      "code": "F001",
-      "name": "เอกสารฝ่ายการตลาด Q2",
-      "status": "READY",
-      "fileCount": 12,
-      "totalSizeBytes": 24560000,
-      "createdAt": "2024-05-01T08:30:00Z",
-      "expiresAt": "2024-12-31T23:59:59Z",
-      "visibility": "ALL",
-      "isUnlimited": false,
-      "template": { "id": "temp_456", "name": "แบบฟอร์มใบแจ้งหนี้" },
-      "notification": {
-        "isExpireNoticeEnabled": true,
-        "expireNoticeUserIds": ["user_001"]
-      }
-    }
-  ],
-  "pagination": { "total": 330, "page": 1, "limit": 100, "totalPages": 4 }
-}
-```
+- `READY` — เผยแพร่แล้ว เข้าถึงได้
+- `DRAFT` — ลูกค้าสร้างเองยังไม่ publish (เข้าถึง detail ไม่ได้)
+- `PROCESSING` — Admin กำลังดำเนินการ (เข้าถึง detail ไม่ได้)
+- `EXPIRED` — หมดอายุแล้ว
+- `REVOKED` — ถูกยกเลิก
 
 ### ดึงรายละเอียดโฟลเดอร์ (พร้อม Download URLs)
 
 ```bash
-curl "http://localhost:4000/api/folders/FOLDER_ID_HERE?filePage=1"
+curl "http://localhost:4000/api/folders/FOLDER_ID_HERE?page=1"
 ```
+
+> **หมายเหตุ:** โฟลเดอร์ที่มีสถานะ `DRAFT` หรือ `PROCESSING` จะได้รับ 403 กลับมา ต้องรอจนกว่าจะถูก publish เป็น `READY`
+
+แต่ละไฟล์ใน response จะมี `downloadUrl` ที่เป็น Presigned URL สำหรับดาวน์โหลดโดยตรงจาก Storage **URL มีอายุ 1 ชั่วโมง** ควรดาวน์โหลดทันทีหลังได้รับ
 
 ### ดึงรายการไฟล์ใน folder (filter ได้)
 
 ```bash
-# ดึงหน้าที่ 2
-curl "http://localhost:4000/api/folders/FOLDER_ID_HERE/files?filePage=2"
+# ดึงหน้าที่ 2 (ถ้ามีไฟล์มากกว่า 100)
+curl "http://localhost:4000/api/folders/FOLDER_ID_HERE/files?page=2"
 
 # ค้นหาจากชื่อไฟล์
 curl "http://localhost:4000/api/folders/FOLDER_ID_HERE/files?search=invoice"
 
-# filter จาก indexData
+# filter จาก indexData (ต้องใส่ทั้ง indexKey และ indexValue คู่กัน)
 curl "http://localhost:4000/api/folders/FOLDER_ID_HERE/files?indexKey=invoice_no&indexValue=INV-2024"
 ```
+
+endpoint นี้เหมาะสำหรับดึงไฟล์หน้าถัดไปโดยไม่ต้องดึง metadata ของ folder ซ้ำ
 
 ### ดูสถิติการใช้งาน Quota
 
@@ -139,15 +144,17 @@ curl "http://localhost:4000/api/folders/FOLDER_ID_HERE/files?indexKey=invoice_no
 curl http://localhost:4000/api/usage
 ```
 
+แสดงการใช้งาน quota วันนี้และย้อนหลัง 30 วัน รวมถึง peak day และค่าเฉลี่ย
+
+---
+
 ### ดาวน์โหลดทุกไฟล์ใน folder (บันทึกลง ./downloads/)
 
-ใช้ endpoint ใหม่ — ได้ Presigned URL ทุกไฟล์ใน **1 request** กิน quota แค่ 1 ครั้ง:
+simulator จะดึง Presigned URL ทุกไฟล์ (วนลูปทุกหน้าถ้ามีมากกว่า 100) แล้ว parallel download ลง disk:
 
 ```bash
 curl http://localhost:4000/api/folders/FOLDER_ID_HERE/download-all
 ```
-
-ตัวอย่าง Response:
 
 ```json
 {
@@ -162,33 +169,68 @@ curl http://localhost:4000/api/folders/FOLDER_ID_HERE/download-all
 ### ดึงประวัติกิจกรรม
 
 ```bash
+# ดึงทั้งหมด
 curl "http://localhost:4000/api/activities?page=1"
 
-# กรองตาม action
+# กรองตาม action (ดู action codes ได้จาก /api/activity-actions)
 curl "http://localhost:4000/api/activities?action=FETCH_FOLDER_LIST,DOWNLOAD_FILE"
 
 # กรองตามช่วงวันที่
 curl "http://localhost:4000/api/activities?startDate=2024-01-01&endDate=2024-12-31"
 ```
 
-### ดูการตั้งค่า Webhook
+### ดู action codes ที่กรองได้
 
 ```bash
-curl http://localhost:4000/api/webhook-config
+curl http://localhost:4000/api/activity-actions
 ```
 
-### สร้าง/แก้ไข Webhook
+ใช้ค่าจาก `code` ในผลลัพธ์นี้ไปใส่ใน `?action=` ของ `/api/activities`
+
+---
+
+## 🔔 การตั้งค่า Webhook (ขั้นตอนสำคัญ)
+
+Webhook คือระบบที่ SST จะ **ส่งข้อมูลมาหาคุณเอง** เมื่อมีเหตุการณ์เกิดขึ้น เช่น โฟลเดอร์ถูกเผยแพร่ แทนที่คุณจะต้องคอย poll ถามตลอดเวลา
+
+### ขั้นตอนที่ 1 — ตรวจสอบว่า simulator รันอยู่
+
+simulator ต้องเปิดอยู่ที่ port 4000 เพราะ SST จะส่ง Ping มาทดสอบก่อนบันทึก
+
+### ขั้นตอนที่ 2 — ตั้งค่า Webhook
 
 ```bash
 curl -X POST http://localhost:4000/api/webhook-config \
   -H "Content-Type: application/json" \
-  -d '{"url":"https://your-server.com/webhook","secret":"your_secret"}'
+  -d '{"url":"http://localhost:4000/api/webhook","secret":"your_webhook_secret_here"}'
 ```
 
-### ทดสอบ Webhook (Ping)
+> **⚠️ สำคัญมาก:** `secret` ที่ส่งมาใน body **ต้องตรงกับ** `SST_WEBHOOK_SECRET` ใน `.env` ของ simulator
+>
+> เพราะ SST จะใช้ secret นี้ sign Ping payload แล้วส่งมาให้ simulator ตรวจสอบ ถ้าไม่ตรงกัน simulator จะตอบ 401 และ SST จะ reject การตั้งค่า
+
+**ครั้งแรก** = สร้างใหม่, **ครั้งถัดไป** = อัปเดตค่าเดิม (upsert)
+
+ถ้าต้องการ **อัปเดต URL แต่ไม่เปลี่ยน secret** ให้ส่ง `"secret": "********"`:
+
+```bash
+curl -X POST http://localhost:4000/api/webhook-config \
+  -H "Content-Type: application/json" \
+  -d '{"url":"http://new-url.com/webhook","secret":"********"}'
+```
+
+### ขั้นตอนที่ 3 — ทดสอบการเชื่อมต่อ
 
 ```bash
 curl -X POST http://localhost:4000/api/webhook-test
+```
+
+SST จะส่ง Ping มาที่ URL ที่ตั้งไว้ ถ้า simulator ตอบ 200 OK แสดงว่าพร้อมรับ Webhook แล้ว
+
+### ขั้นตอนที่ 4 — ดูการตั้งค่าปัจจุบัน
+
+```bash
+curl http://localhost:4000/api/webhook-config
 ```
 
 ### ปิดการใช้งาน Webhook
@@ -238,11 +280,18 @@ await Promise.all(
 
 ### 4. Pagination ของไฟล์ใน Folder
 
-ถ้า folder มีไฟล์มากกว่า 100 ต้องวนลูปดึงทุกหน้า:
+ถ้า folder มีไฟล์มากกว่า 100 ต้องวนลูปดึงทุกหน้า โดยดูจาก `filesPagination.totalPages`:
 
 ```typescript
-const { totalPages } = firstPage.data.data.filesPagination;
-// ดึงหน้า 2, 3, ... จนครบ totalPages
+// ดึงหน้าแรกก่อนเพื่อรู้จำนวนหน้าทั้งหมด
+const first = await api.get(`/folders/${id}?page=1`);
+const { totalPages } = first.data.data.filesPagination;
+
+// ดึงหน้าที่เหลือพร้อมกัน
+const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => api.get(`/folders/${id}?page=${i + 2}`)));
+
+// รวมไฟล์ทั้งหมด
+const allFiles = [...first.data.data.files, ...rest.flatMap((r) => r.data.data.files)];
 ```
 
 ### 5. Webhook Events ที่รองรับ
@@ -253,6 +302,25 @@ const { totalPages } = firstPage.data.data.filesPagination;
 | `FOLDER_EXPIRED`   | โฟลเดอร์หมดอายุ — ลบ cache หรือแจ้งเตือน user |
 | `FOLDER_REVOKED`   | โฟลเดอร์ถูกยกเลิก — ลบ access ฝั่งตัวเอง      |
 | `PING`             | ทดสอบการเชื่อมต่อ — ตอบกลับ 200 OK เท่านั้น   |
+
+---
+
+## ❓ คำถามที่พบบ่อย
+
+**Q: ทำไม POST /api/webhook-config แล้วได้ error 401 กลับมา?**
+A: `secret` ที่ส่งใน body ไม่ตรงกับ `SST_WEBHOOK_SECRET` ใน `.env` ของ simulator ต้องใช้ค่าเดียวกัน เพราะ SST ใช้ secret นั้น sign Ping แล้วส่งมาให้ simulator ตรวจ
+
+**Q: ทำไม folder บางอันเข้าถึง detail ไม่ได้ ได้ 403 กลับมา?**
+A: folder ที่มีสถานะ `DRAFT` หรือ `PROCESSING` ยังไม่พร้อมให้เข้าถึง ต้องรอจนกว่า Admin จะ publish เป็น `READY`
+
+**Q: `downloadUrl` เป็น null ทำไม?**
+A: ไฟล์นั้นอาจหายจาก Storage แล้ว ควรกรองออกก่อน download ด้วย `.filter(f => f.downloadUrl)`
+
+**Q: Presigned URL ใช้ได้นานแค่ไหน?**
+A: 1 ชั่วโมง (3600 วินาที) ควรดาวน์โหลดทันทีหลังได้รับ ถ้าหมดอายุต้องเรียก API ใหม่
+
+**Q: ถ้าอยากเปลี่ยน Webhook URL แต่ไม่อยากเปลี่ยน secret ทำยังไง?**
+A: ส่ง `"secret": "********"` ระบบจะคงค่า secret เดิมไว้ให้
 
 ---
 
@@ -268,7 +336,7 @@ downloads/
     └── ...
 ```
 
-> **หมายเหตุ:** ใน Production จริง ไม่จำเป็นต้องบันทึกลง disk — สามารถนำ `downloadUrl` จาก `GET /api/external/folders/{id}/download-all` ไปประมวลผลต่อได้เลย เช่น ส่งต่อไป S3, เข้า Queue, หรือ stream ไปยัง client โดยตรง
+> **หมายเหตุ:** ใน Production จริง ไม่จำเป็นต้องบันทึกลง disk — สามารถนำ `downloadUrl` จาก `files[].downloadUrl` ไปประมวลผลต่อได้เลย เช่น ส่งต่อไป S3, เข้า Queue, หรือ stream ไปยัง client โดยตรง
 
 ---
 

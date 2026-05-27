@@ -121,16 +121,16 @@ app.get('/api/folders', async (req: Request, res: Response): Promise<any> => {
 
 // ============================================================
 // 3. Folder Detail — ดึงรายละเอียดโฟลเดอร์ + ไฟล์ + Download URLs
-// GET /api/folders/:id?filePage=1
+// GET /api/folders/:id?page=1
 // ============================================================
 app.get('/api/folders/:id', async (req: Request, res: Response): Promise<any> => {
   const { id } = req.params;
-  const { filePage = '1' } = req.query;
-  console.log(`\n--- [3] Fetching Folder Detail: ${id} (filePage=${filePage}) ---`);
+  const { page = '1' } = req.query;
+  console.log(`\n--- [3] Fetching Folder Detail: ${id} (page=${page}) ---`);
 
   try {
     const response = await sstApi.get(`/api/external/folders/${id}`, {
-      params: { filePage: String(filePage) },
+      params: { page: String(page) },
     });
     logQuota(response.headers);
 
@@ -167,15 +167,15 @@ app.get('/api/folders/:id', async (req: Request, res: Response): Promise<any> =>
 
 // ============================================================
 // 4. Folder Files — ดึงรายการไฟล์ใน folder (ไม่ต้องดึง metadata ซ้ำ)
-// GET /api/folders/:id/files?filePage=1&search=invoice&indexKey=invoice_no&indexValue=INV-2024
+// GET /api/folders/:id/files?page=1&search=invoice&indexKey=invoice_no&indexValue=INV-2024
 // ============================================================
 app.get('/api/folders/:id/files', async (req: Request, res: Response): Promise<any> => {
   const { id } = req.params;
-  const { filePage = '1', search, indexKey, indexValue } = req.query;
-  console.log(`\n--- [4] Fetching Files in Folder: ${id} (filePage=${filePage}) ---`);
+  const { page = '1', search, indexKey, indexValue } = req.query;
+  console.log(`\n--- [4] Fetching Files in Folder: ${id} (page=${page}) ---`);
 
   try {
-    const params: Record<string, string> = { filePage: String(filePage) };
+    const params: Record<string, string> = { page: String(page) };
     if (search) params.search = String(search);
     if (indexKey) params.indexKey = String(indexKey);
     if (indexValue) params.indexValue = String(indexValue);
@@ -237,7 +237,7 @@ app.get('/api/folders/:id/download-all', async (req: Request, res: Response): Pr
 
   try {
     // ดึงหน้าแรกก่อนเพื่อรู้จำนวนหน้าทั้งหมด
-    const firstPage = await sstApi.get(`/api/external/folders/${id}`, { params: { filePage: 1 } });
+    const firstPage = await sstApi.get(`/api/external/folders/${id}`, { params: { page: 1 } });
     const folderData = firstPage.data.data;
 
     // ตรวจสอบว่า folder พร้อมใช้งานหรือไม่ (PROCESSING/DRAFT จะไม่มี filesPagination)
@@ -261,7 +261,7 @@ app.get('/api/folders/:id/download-all', async (req: Request, res: Response): Pr
     // ดึงทุกหน้าพร้อมกัน — แต่ละหน้ากิน 1 quota
     const allPageResponses = await Promise.all(
       Array.from({ length: totalPages }, (_, i) =>
-        i === 0 ? Promise.resolve(firstPage) : sstApi.get(`/api/external/folders/${id}`, { params: { filePage: i + 1 } }),
+        i === 0 ? Promise.resolve(firstPage) : sstApi.get(`/api/external/folders/${id}`, { params: { page: i + 1 } }),
       ),
     );
 
@@ -560,7 +560,7 @@ async function handleFolderPublished(data: any) {
   try {
     // ดึงหน้าแรกเพื่อรู้จำนวนหน้าทั้งหมด
     const firstPage = await sstApi.get(`/api/external/folders/${folderId}`, {
-      params: { filePage: 1 },
+      params: { page: 1 },
     });
 
     const folderData = firstPage.data.data;
@@ -574,7 +574,7 @@ async function handleFolderPublished(data: any) {
       filesPagination.totalPages > 1
         ? await Promise.all(
             Array.from({ length: filesPagination.totalPages }, (_, i) =>
-              i === 0 ? Promise.resolve(firstPage) : sstApi.get(`/api/external/folders/${folderId}`, { params: { filePage: i + 1 } }),
+              i === 0 ? Promise.resolve(firstPage) : sstApi.get(`/api/external/folders/${folderId}`, { params: { page: i + 1 } }),
             ),
           )
         : [firstPage];
