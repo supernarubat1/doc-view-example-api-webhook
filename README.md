@@ -191,7 +191,7 @@ curl http://localhost:4000/api/activity-actions
 
 ## 🔔 การตั้งค่า Webhook (ขั้นตอนสำคัญ)
 
-Webhook คือระบบที่ SST จะ **ส่งข้อมูลมาหาคุณเอง** เมื่อมีเหตุการณ์เกิดขึ้น เช่น โฟลเดอร์ถูกเผยแพร่ แทนที่คุณจะต้องคอย poll ถามตลอดเวลา
+Webhook คือระบบที่ SST จะ **ส่งข้อมูลมาหาคุณเอง** เมื่อมีเหตุการณ์เกิดขึ้น เช่น โฟลเดอร์ถูกเผยแพร่ แทนที่คุณจะต้องคอย pull ถามตลอดเวลา
 
 ### ขั้นตอนที่ 1 — ตรวจสอบว่า simulator รันอยู่
 
@@ -308,19 +308,32 @@ const allFiles = [...first.data.data.files, ...rest.flatMap((r) => r.data.data.f
 ## ❓ คำถามที่พบบ่อย
 
 **Q: ทำไม POST /api/webhook-config แล้วได้ error 401 กลับมา?**
-A: `secret` ที่ส่งใน body ไม่ตรงกับ `SST_WEBHOOK_SECRET` ใน `.env` ของ simulator ต้องใช้ค่าเดียวกัน เพราะ SST ใช้ secret นั้น sign Ping แล้วส่งมาให้ simulator ตรวจ
+
+**A: `secret` ที่ส่งใน body ไม่ตรงกับ `SST_WEBHOOK_SECRET` ใน `.env` ของ simulator ต้องใช้ค่าเดียวกัน เพราะ SST ใช้ secret นั้น sign Ping แล้วส่งมาให้ simulator ตรวจ**
+
+---
 
 **Q: ทำไม folder บางอันเข้าถึง detail ไม่ได้ ได้ 403 กลับมา?**
-A: folder ที่มีสถานะ `DRAFT` หรือ `PROCESSING` ยังไม่พร้อมให้เข้าถึง ต้องรอจนกว่า Admin จะ publish เป็น `READY`
+
+**A: folder ที่มีสถานะ `DRAFT` หรือ `PROCESSING` ยังไม่พร้อมให้เข้าถึง ต้องรอจนกว่า Admin จะ publish เป็น `READY`**
+
+---
 
 **Q: `downloadUrl` เป็น null ทำไม?**
-A: ไฟล์นั้นอาจหายจาก Storage แล้ว ควรกรองออกก่อน download ด้วย `.filter(f => f.downloadUrl)`
+
+**A: ไฟล์นั้นอาจหายจาก Storage แล้ว ควรกรองออกก่อน download ด้วย `.filter(f => f.downloadUrl)`**
+
+---
 
 **Q: Presigned URL ใช้ได้นานแค่ไหน?**
-A: 1 ชั่วโมง (3600 วินาที) ควรดาวน์โหลดทันทีหลังได้รับ ถ้าหมดอายุต้องเรียก API ใหม่
+
+**A: 1 ชั่วโมง (3600 วินาที) ควรดาวน์โหลดทันทีหลังได้รับ ถ้าหมดอายุต้องเรียก API ใหม่**
+
+---
 
 **Q: ถ้าอยากเปลี่ยน Webhook URL แต่ไม่อยากเปลี่ยน secret ทำยังไง?**
-A: ส่ง `"secret": "********"` ระบบจะคงค่า secret เดิมไว้ให้
+
+**A: ส่ง "secret": "\*\*\*\*\*" ระบบจะคงค่า secret เดิมไว้ให้**
 
 ---
 
