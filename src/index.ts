@@ -547,18 +547,64 @@ app.post('/api/webhook', (req: any, res: Response): any => {
 // ============================================================
 // Handler: FOLDER_PUBLISHED
 // เมื่อโฟลเดอร์ถูกเผยแพร่ — ดึงข้อมูลและ download ไฟล์ทั้งหมด
+//
+// ข้อมูลที่ได้รับจาก payload (data):
+//   - folderId    : UUID ของโฟลเดอร์
+//   - folderCode  : รหัสโฟลเดอร์ (เช่น "F-2024-001")
+//   - folderName  : ชื่อโฟลเดอร์
+//   - publishedAt : วันเวลาที่เผยแพร่ (ISO string)
+//   - fileCount   : จำนวนไฟล์ทั้งหมด
+//   - totalSizeBytes : ขนาดรวมทั้งหมด (bytes)
+//   - expiredAt   : วันหมดอายุ (ISO string หรือ null ถ้าไม่มีกำหนด)
+//
+// Flow การทำงาน:
+//   1. รับ folderId จาก payload
+//   2. เรียก GET /api/external/folders/:id เพื่อดึงข้อมูลโฟลเดอร์ + ไฟล์ + download URLs
+//      (ถ้ามีหลายหน้า จะดึงทุกหน้าพร้อมกัน — แต่ละหน้ากิน 1 quota)
+//   3. รวม download URLs ของทุกไฟล์
+//   4. นำไฟล์ไปประมวลผลตามต้องการ (ดูตัวอย่างด้านล่าง)
+//
+// โครงสร้างข้อมูลไฟล์แต่ละไฟล์ที่ได้จาก API:
+//   file.name        : ชื่อไฟล์ (เช่น "invoice_001.pdf")
+//   file.mimeType    : ประเภทไฟล์ (เช่น "application/pdf")
+//   file.sizeFormatted: ขนาดไฟล์ (เช่น "1.2 MB")
+//   file.downloadUrl : Pre-signed URL สำหรับดาวน์โหลดตรงจาก Storage (หมดอายุใน 1 ชั่วโมง)
+//   file.indexData   : ข้อมูล Key Index ที่คีย์ไว้ (object) เช่น { invoice_no: "INV-001", amount: "5000" }
+//   file.status      : สถานะไฟล์ (ACTIVE)
+//   file.uploadedAt  : วันเวลาที่อัปโหลด
+//
+// ข้อมูล Template (ถ้าโฟลเดอร์ใช้ Template):
+//   folderData.template.name   : ชื่อ Template
+//   folderData.template.fields : รายการ fields ทั้งหมดใน Template
+//     field.key   : key ของ field (เช่น "invoice_no")
+//     field.label : ชื่อที่แสดง (เช่น "เลขที่ใบแจ้งหนี้")
+//     field.type  : ประเภท (TEXT, NUMBER, DATE, ฯลฯ)
 // ============================================================
 async function handleFolderPublished(data: any) {
-  const folderId = data?.id;
+  const folderId = data?.folderId;
   if (!folderId) {
     console.error('❌ handleFolderPublished: missing folder id in payload');
     return;
   }
 
-  console.log(`\n📂 Processing FOLDER_PUBLISHED: ${folderId} (${data.name})`);
+  console.log(`\n📂 Processing FOLDER_PUBLISHED: ${folderId} (${data.folderName || data.folderCode})`);
+  console.log(`   Published at: ${data.publishedAt}, Files: ${data.fileCount}, Size: ${data.totalSizeBytes} bytes`);
+  if (data.expiredAt) console.log(`   Expires at: ${data.expiredAt}`);
 
   try {
-    // ดึงหน้าแรกเพื่อรู้จำนวนหน้าทั้งหมด
+    // -------------------------------------------------------
+    // STEP 1: ดึงหน้าแรกเพื่อรู้จำนวนหน้าทั้งหมด
+    //
+    // Response structure:
+    // {
+    //   data: {
+    //     id, code, name, status,
+    //     template: { name, fields: [{ key, label, type }] },
+    //     files: [ { name, mimeType, downloadUrl, indexData, ... } ],
+    //     filesPagination: { page, totalPages, total, pageSize }
+    //   }
+    // }
+    // -------------------------------------------------------
     const firstPage = await sstApi.get(`/api/external/folders/${folderId}`, {
       params: { page: 1 },
     });
@@ -569,7 +615,13 @@ async function handleFolderPublished(data: any) {
     console.log(`   Files: ${filesPagination.total} total, ${filesPagination.totalPages} pages`);
     console.log(`   Template: ${folderData.template?.name || 'ไม่ได้ใช้ Template'}`);
 
-    // ถ้ามีหลายหน้า ดึงทุกหน้าพร้อมกัน
+    // -------------------------------------------------------
+    // STEP 2: ถ้ามีหลายหน้า ดึงทุกหน้าพร้อมกัน (Parallel)
+    //
+    // แต่ละหน้าแสดงผลได้สูงสุด 100 รายการ
+    // ถ้ามีไฟล์ 500 รายการ → totalPages = 5 → ต้องใช้ 5 requests (กิน 5 quota)
+    // ดึงพร้อมกันทั้งหมดด้วย Promise.all เพื่อความเร็ว
+    // -------------------------------------------------------
     const allPageResponses =
       filesPagination.totalPages > 1
         ? await Promise.all(
@@ -579,22 +631,128 @@ async function handleFolderPublished(data: any) {
           )
         : [firstPage];
 
-    // รวม downloadUrl จาก files[] ทุกหน้า
-    const allUrls: { name: string; downloadUrl: string; mimeType: string }[] = [];
+    // -------------------------------------------------------
+    // STEP 3: รวมข้อมูลไฟล์ทุกหน้าเข้าด้วยกัน
+    //
+    // แต่ละ file object มี:
+    //   - name        : ชื่อไฟล์
+    //   - mimeType    : ประเภทไฟล์
+    //   - downloadUrl : Pre-signed URL (ดาวน์โหลดตรงจาก Storage ไม่ผ่าน server)
+    //   - indexData   : ข้อมูล Key Index ที่คีย์ไว้ เช่น { invoice_no: "INV-001" }
+    //   - sizeFormatted: ขนาดไฟล์ที่อ่านง่าย
+    // -------------------------------------------------------
+    const allFiles: {
+      name: string;
+      downloadUrl: string;
+      mimeType: string;
+      indexData: Record<string, any>;
+      sizeFormatted: string;
+    }[] = [];
+
     for (const pageRes of allPageResponses) {
       const files = pageRes.data.data.files as any[];
-      files.filter((f: any) => f.downloadUrl).forEach((f: any) => allUrls.push({ name: f.name, downloadUrl: f.downloadUrl, mimeType: f.mimeType }));
+      files
+        .filter((f: any) => f.downloadUrl)
+        .forEach((f: any) =>
+          allFiles.push({
+            name: f.name,
+            downloadUrl: f.downloadUrl,
+            mimeType: f.mimeType,
+            indexData: f.indexData || {}, // ข้อมูล Key Index ที่คีย์ไว้
+            sizeFormatted: f.sizeFormatted,
+          }),
+        );
     }
 
-    console.log(`   🔗 ${allUrls.length} download URLs collected`);
+    console.log(`\n   🔗 ${allFiles.length} files ready to process`);
 
-    // ============================================================
-    // ตรงนี้คือจุดที่คุณนำไฟล์ไปประมวลผลต่อ
-    // ตัวอย่าง: บันทึกลง disk, ส่งต่อไป S3, เข้า Queue, ฯลฯ
-    // ============================================================
-    for (const { name, mimeType } of allUrls) {
-      console.log(`   📄 Ready to process: ${name} (${mimeType})`);
-      // ตัวอย่าง: await processFile(name, downloadUrl);
+    // -------------------------------------------------------
+    // STEP 4: นำข้อมูลไปใช้งานต่อ — เลือก pattern ที่เหมาะกับระบบของคุณ
+    //
+    // ตัวอย่าง Pattern ที่ใช้บ่อย:
+    //
+    // [A] บันทึกไฟล์ลง Disk (เหมาะกับ on-premise หรือ NAS)
+    // [B] ส่งต่อไป Cloud Storage (S3, GCS, Azure Blob)
+    // [C] ส่งเข้า Message Queue (RabbitMQ, Kafka, SQS) เพื่อประมวลผลแบบ async
+    // [D] เรียก OCR / AI Pipeline ต่อทันที
+    // [E] บันทึก indexData ลง Database ของตัวเอง
+    // -------------------------------------------------------
+
+    for (const file of allFiles) {
+      console.log(`   📄 Processing: ${file.name} (${file.mimeType}, ${file.sizeFormatted})`);
+
+      // แสดง indexData ที่คีย์ไว้ (ข้อมูล Key Index จาก Template)
+      if (Object.keys(file.indexData).length > 0) {
+        console.log(`      Index Data: ${JSON.stringify(file.indexData)}`);
+        // ตัวอย่าง: อ่านค่า field เฉพาะ
+        // const invoiceNo = file.indexData['invoice_no'];
+        // const amount    = file.indexData['amount'];
+      }
+
+      // -------------------------------------------------------
+      // [A] บันทึกไฟล์ลง Disk
+      // -------------------------------------------------------
+      // const downloadDir = path.join(process.cwd(), 'downloads', folderId);
+      // if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
+      // const fileRes = await axios.get(file.downloadUrl, { responseType: 'arraybuffer' });
+      // fs.writeFileSync(path.join(downloadDir, file.name), Buffer.from(fileRes.data));
+      // console.log(`      ✅ Saved to disk: ${file.name}`);
+
+      // -------------------------------------------------------
+      // [B] ส่งต่อไป S3 (ต้องติดตั้ง @aws-sdk/client-s3)
+      // -------------------------------------------------------
+      // const fileRes = await axios.get(file.downloadUrl, { responseType: 'arraybuffer' });
+      // await s3Client.send(new PutObjectCommand({
+      //   Bucket: 'my-bucket',
+      //   Key: `folders/${folderId}/${file.name}`,
+      //   Body: Buffer.from(fileRes.data),
+      //   ContentType: file.mimeType,
+      //   Metadata: { folderId, ...file.indexData },
+      // }));
+      // console.log(`      ✅ Uploaded to S3: ${file.name}`);
+
+      // -------------------------------------------------------
+      // [C] ส่งเข้า Message Queue (ตัวอย่าง: HTTP Queue หรือ SQS)
+      // ส่งแค่ URL + metadata ไม่ต้องดาวน์โหลดไฟล์ก่อน
+      // Worker ฝั่งอื่นจะดาวน์โหลดและประมวลผลเอง
+      // -------------------------------------------------------
+      // await axios.post('http://my-queue-service/jobs', {
+      //   type: 'PROCESS_FILE',
+      //   folderId,
+      //   folderCode: data.folderCode,
+      //   fileName: file.name,
+      //   mimeType: file.mimeType,
+      //   downloadUrl: file.downloadUrl,  // Pre-signed URL หมดอายุใน 1 ชั่วโมง
+      //   indexData: file.indexData,
+      // });
+      // console.log(`      ✅ Queued: ${file.name}`);
+
+      // -------------------------------------------------------
+      // [D] ส่งไฟล์เข้า OCR / AI Pipeline ของระบบลูกค้าเอง
+      // เช่น OCR service ที่ลูกค้าสร้างเอง หรือ third-party ที่ลูกค้าใช้อยู่
+      // -------------------------------------------------------
+      // if (file.mimeType === 'application/pdf' || file.mimeType.startsWith('image/')) {
+      //   const ocrResult = await axios.post('http://my-ocr-service/extract', {
+      //     fileUrl: file.downloadUrl,
+      //     fileName: file.name,
+      //   });
+      //   console.log(`      🔍 OCR Result: ${JSON.stringify(ocrResult.data)}`);
+      // }
+
+      // -------------------------------------------------------
+      // [E] บันทึก indexData ลง Database ของตัวเอง (เช่น PostgreSQL, MongoDB)
+      // -------------------------------------------------------
+      // await db.collection('documents').insertOne({
+      //   folderId,
+      //   folderCode: data.folderCode,
+      //   fileName: file.name,
+      //   mimeType: file.mimeType,
+      //   publishedAt: data.publishedAt,
+      //   expiredAt: data.expiredAt,
+      //   ...file.indexData,  // spread ข้อมูล Key Index เข้า document โดยตรง
+      //   createdAt: new Date(),
+      // });
+      // console.log(`      ✅ Saved to DB: ${file.name}`);
     }
 
     console.log(`✨ FOLDER_PUBLISHED handled successfully: ${folderId}`);
