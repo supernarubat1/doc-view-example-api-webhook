@@ -766,21 +766,28 @@ async function handleFolderPublished(data: any) {
 // เมื่อโฟลเดอร์หมดอายุ
 // ============================================================
 function handleFolderExpired(data: any) {
-  const folderId = data?.id;
-  console.log(`\n⏰ FOLDER_EXPIRED: ${folderId} (${data?.name})`);
-  console.log(`   หมดอายุเมื่อ: ${data?.expiredAt || '-'}`);
+  const folderId = data?.folderId;
+  console.log(`\n⏰ FOLDER_EXPIRED: ${folderId}`);
+  console.log(`   รหัสโฟลเดอร์ : ${data?.folderCode || '-'}`);
+  console.log(`   ชื่อโฟลเดอร์  : ${data?.folderName || '-'}`);
+  console.log(`   หมดอายุเมื่อ  : ${data?.expiredAt || '-'}`);
+  console.log(`   กำหนดหมดอายุ : ${data?.expireAt || '-'}`);
+  console.log(`   จำนวนไฟล์    : ${data?.fileCount ?? '-'}`);
   // ตรงนี้ใส่ logic ที่ต้องการเมื่อ folder หมดอายุ
   // เช่น: ลบข้อมูลที่ cache ไว้, แจ้งเตือน user, อัปเดต database ฝั่งตัวเอง
 }
 
 // ============================================================
 // Handler: FOLDER_REVOKED
-// เมื่อโฟลเดอร์ถูกยกเลิก
+// เมื่อโฟลเดอร์ถูกยกเลิก/ลบ
 // ============================================================
 function handleFolderRevoked(data: any) {
-  const folderId = data?.id;
-  console.log(`\n🚫 FOLDER_REVOKED: ${folderId} (${data?.name})`);
-  console.log(`   ยกเลิกโดย: ${data?.revokedBy || '-'}`);
+  const folderId = data?.folderId;
+  console.log(`\n🚫 FOLDER_REVOKED: ${folderId}`);
+  console.log(`   รหัสโฟลเดอร์ : ${data?.folderCode || '-'}`);
+  console.log(`   ชื่อโฟลเดอร์  : ${data?.folderName || '-'}`);
+  console.log(`   ยกเลิกเมื่อ   : ${data?.revokedAt || '-'}`);
+  console.log(`   จำนวนไฟล์    : ${data?.fileCount ?? '-'}`);
   // ตรงนี้ใส่ logic ที่ต้องการเมื่อ folder ถูกยกเลิก
   // เช่น: ลบ access, แจ้งเตือน user, อัปเดต status ฝั่งตัวเอง
 }
