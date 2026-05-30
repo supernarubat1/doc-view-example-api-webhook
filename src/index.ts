@@ -437,7 +437,9 @@ app.get('/api/webhook-config', async (_req: Request, res: Response): Promise<any
 // ============================================================
 // 10. Webhook Setup — สร้าง/แก้ไข Webhook
 // POST /api/webhook-config
-// Body: { url, secret, events?, status? }
+// Body: { url, secret, events, status? }
+// events: รายการ Event ที่ต้องการรับ — ['FOLDER_PUBLISHED', 'FOLDER_REVOKED', 'FOLDER_EXPIRED']
+//         ถ้าไม่ระบุ: SST จะ Default เป็น ['FOLDER_PUBLISHED'] เท่านั้น
 // ============================================================
 app.post('/api/webhook-config', async (req: Request, res: Response): Promise<any> => {
   console.log('\n--- [11] Setting up Webhook ---');
@@ -447,8 +449,17 @@ app.post('/api/webhook-config', async (req: Request, res: Response): Promise<any
       return res.status(400).json({ success: false, error: 'กรุณาระบุ url และ secret' });
     }
 
+    const subscribedEvents = events || ['FOLDER_PUBLISHED'];
+    console.log(`   URL: ${url}`);
+    console.log(`   Events: ${subscribedEvents.join(', ')}`);
+    if (!events) {
+      console.log(`   ⚠️  events ไม่ได้ระบุ → SST จะ Default เป็น ['FOLDER_PUBLISHED'] เท่านั้น`);
+      console.log(`   💡 หากต้องการรับทุก Event ให้ระบุ: events: ['FOLDER_PUBLISHED', 'FOLDER_REVOKED', 'FOLDER_EXPIRED']`);
+    }
+
     const response = await sstApi.post('/api/external/webhooks', { url, secret, events, status });
     console.log(`✅ Webhook configured: ${response.data.data?.url}`);
+    console.log(`   Subscribed Events: ${(response.data.data?.events || subscribedEvents).join(', ')}`);
     return res.json({ success: true, data: response.data });
   } catch (error: any) {
     console.error('❌ Webhook Setup Failed:', error.response?.data || error.message);
