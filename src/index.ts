@@ -469,7 +469,7 @@ app.post('/api/webhook-config', async (req: Request, res: Response): Promise<any
 });
 
 // ============================================================
-// 11. Webhook Test — ส่ง Ping ทดสอบ
+// 11. Webhook Test — ส่ง TEST_CONNECTION ทดสอบ
 // POST /api/webhook-test
 // ============================================================
 app.post('/api/webhook-test', async (_req: Request, res: Response): Promise<any> => {
@@ -547,8 +547,11 @@ app.post('/api/webhook', (req: any, res: Response): any => {
     case 'FOLDER_REVOKED':
       handleFolderRevoked(payload.data);
       break;
+    case 'TEST_CONNECTION':
+      console.log('✅ TEST_CONNECTION received — webhook test successful');
+      break;
     case 'PING':
-      console.log('🏓 Ping received — connection test successful');
+      console.log('🏓 PING received — setup validation successful');
       break;
     default:
       console.log(`ℹ️  Unhandled event: ${payload.event}`);
@@ -822,7 +825,7 @@ app.listen(PORT, () => {
   console.log(`  GET    http://localhost:${PORT}/api/activities/:id        — รายละเอียดกิจกรรม`);
   console.log(`  GET    http://localhost:${PORT}/api/webhook-config        — ดูการตั้งค่า Webhook`);
   console.log(`  POST   http://localhost:${PORT}/api/webhook-config        — สร้าง/แก้ไข Webhook`);
-  console.log(`  POST   http://localhost:${PORT}/api/webhook-test          — ทดสอบ Webhook (Ping)`);
+  console.log(`  POST   http://localhost:${PORT}/api/webhook-test          — ทดสอบ Webhook (TEST_CONNECTION)`);
   console.log(`  DELETE http://localhost:${PORT}/api/webhook-config        — ปิดการใช้งาน Webhook`);
   console.log(`  POST   http://localhost:${PORT}/api/webhook               — รับ Webhook Event จาก SST`);
   console.log('==================================================');
