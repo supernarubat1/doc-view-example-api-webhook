@@ -27,6 +27,10 @@ const SST_API_URL = process.env.SST_API_URL || 'http://localhost:3000';
 const CUSTOMER_ID = process.env.SST_CUSTOMER_ID || '';
 const SECRET_KEY = process.env.SST_SECRET_KEY || '';
 
+function safeFileName(name: string): string {
+  return path.basename(name).replace(/[<>:"/\\|?*\x00-\x1F]/g, '_') || 'downloaded-file';
+}
+
 // ============================================================
 // Axios Instance — ใส่ Headers ทุก Request อัตโนมัติ
 // ============================================================
@@ -294,7 +298,7 @@ app.get('/api/folders/:id/download-all', async (req: Request, res: Response): Pr
       allUrls.map(async ({ name, sizeFormatted, downloadUrl }) => {
         try {
           const fileRes = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
-          const filePath = path.join(downloadDir, name);
+          const filePath = path.join(downloadDir, safeFileName(name));
           fs.writeFileSync(filePath, Buffer.from(fileRes.data));
           console.log(`  ✅ Downloaded: ${name} (${sizeFormatted})`);
           successCount++;
@@ -522,7 +526,11 @@ app.post('/api/webhook', (req: any, res: Response): any => {
   const hmac = crypto.createHmac('sha256', WEBHOOK_SECRET);
   const digest = hmac.update(rawBody).digest('hex');
 
-  if (signature !== digest) {
+  const receivedSignature = Array.isArray(signature) ? signature[0] : signature;
+  const receivedBuffer = Buffer.from(receivedSignature || '', 'hex');
+  const expectedBuffer = Buffer.from(digest, 'hex');
+
+  if (receivedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)) {
     console.error('❌ Invalid signature! Potential spoofing attempt.');
     console.error(`   Received: ${signature}`);
     console.error(`   Expected: ${digest}`);
