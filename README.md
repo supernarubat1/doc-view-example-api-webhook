@@ -174,8 +174,8 @@ curl http://localhost:4000/api/folders/FOLDER_ID_HERE/download-all
 # ดึงทั้งหมด
 curl "http://localhost:4000/api/activities?page=1"
 
-# กรองตาม action (ดู action codes ได้จาก /api/activity-actions)
-curl "http://localhost:4000/api/activities?action=FETCH_FOLDER_LIST,DOWNLOAD_FILE"
+# กรองตาม action keys (ดู action codes ได้จาก /api/activity-actions)
+curl "http://localhost:4000/api/activities?actionKeys=FETCH_FOLDER_LIST,DOWNLOAD_FILE"
 
 # กรองตามช่วงวันที่
 curl "http://localhost:4000/api/activities?startDate=2024-01-01&endDate=2024-12-31"
@@ -187,7 +187,8 @@ curl "http://localhost:4000/api/activities?startDate=2024-01-01&endDate=2024-12-
 curl http://localhost:4000/api/activity-actions
 ```
 
-ใช้ค่าจาก `code` ในผลลัพธ์นี้ไปใส่ใน `?action=` ของ `/api/activities`
+ใช้ค่าจาก `code` ในผลลัพธ์นี้ไปใส่ใน `?actionKeys=` ของ `/api/activities`
+> ถ้ายังมี integration เดิมที่ส่ง `action=` อยู่ simulator รุ่นนี้ยังรับได้ แต่ระบบปัจจุบันจะส่งต่อเป็น `actionKeys` ให้ตรงกับ API ล่าสุด
 
 ---
 

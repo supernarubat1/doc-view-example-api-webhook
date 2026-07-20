@@ -318,15 +318,20 @@ app.get('/api/activity-actions', async (_req, res) => {
 });
 // ============================================================
 // 8. Activity List — ดึงประวัติกิจกรรม
-// GET /api/activities?page=1&action=FETCH_FOLDER_LIST&startDate=2024-01-01
+// GET /api/activities?page=1&actionKeys=FETCH_FOLDER_LIST&startDate=2024-01-01
 // ============================================================
 app.get('/api/activities', async (req, res) => {
     console.log('\n--- [8] Fetching Activity List ---');
     try {
-        const { page = '1', action, startDate, endDate } = req.query;
+        const { page = '1', actionKeys, action, groupKey, categoryKey, startDate, endDate } = req.query;
         const params = { page: String(page) };
-        if (action)
-            params.action = String(action);
+        const normalizedActionKeys = actionKeys || action;
+        if (normalizedActionKeys)
+            params.actionKeys = String(normalizedActionKeys);
+        if (groupKey)
+            params.groupKey = String(groupKey);
+        if (categoryKey)
+            params.categoryKey = String(categoryKey);
         if (startDate)
             params.startDate = String(startDate);
         if (endDate)
