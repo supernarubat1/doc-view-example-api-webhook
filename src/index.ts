@@ -112,7 +112,7 @@ app.get('/api/folders', async (req: Request, res: Response): Promise<any> => {
     const { data, pagination, usage } = response.data;
     console.log(`✅ Found ${pagination.total} folders (Page ${pagination.page}/${pagination.totalPages}) [status=${params.status}]`);
     data.forEach((f: any) => {
-      console.log(`  📁 [${f.code}] ${f.name} — ${f.fileCount} files, status: ${f.status}, size: ${f.totalSizeFormatted}`);
+      console.log(`  📁 [${f.code}] ${f.name} — ${f.fileCount} files, status: ${f.status}, size: ${f.totalSizeData}`);
     });
 
     return res.json({ success: true, data, pagination, usage });
@@ -143,14 +143,14 @@ app.get('/api/folders/:id', async (req: Request, res: Response): Promise<any> =>
     console.log(`   Created by: ${data.metadata?.createdBy || '-'}`);
     console.log(`   Template: ${data.template?.name || 'ไม่ได้ใช้ Template'}`);
     console.log(`   Files (page ${data.filesPagination?.page}/${data.filesPagination?.totalPages}): ${data.files?.length} items`);
-    console.log(`   Total files: ${data.filesPagination?.total}, Total size: ${data.summary?.totalSizeFormatted}`);
+    console.log(`   Total files: ${data.filesPagination?.total}, Total size: ${data.summary?.totalSizeData}`);
 
     // แสดงตัวอย่างไฟล์แรก
     if (data.files?.length > 0) {
       const firstFile = data.files[0];
       console.log(`\n   📄 ตัวอย่างไฟล์แรก:`);
       console.log(`      Name: ${firstFile.name}`);
-      console.log(`      Size: ${firstFile.sizeFormatted}`);
+      console.log(`      Size: ${firstFile.sizeData}`);
       console.log(`      MIME: ${firstFile.mimeType}`);
       console.log(`      Status: ${firstFile.status}`);
       console.log(`      Index Data: ${JSON.stringify(firstFile.indexData)}`);
@@ -196,7 +196,7 @@ app.get('/api/folders/:id/files', async (req: Request, res: Response): Promise<a
       );
     }
     data.files.slice(0, 3).forEach((f: any) => {
-      console.log(`  📄 ${f.name} (${f.sizeFormatted}) — ${f.status}`);
+      console.log(`  📄 ${f.name} (${f.sizeData}) — ${f.status}`);
     });
     if (data.files.length > 3) console.log(`  ... and ${data.files.length - 3} more`);
 
@@ -270,12 +270,12 @@ app.get('/api/folders/:id/download-all', async (req: Request, res: Response): Pr
     );
 
     // รวม downloadUrl จาก files[] ทุกหน้า
-    const allUrls: { name: string; sizeFormatted: string; downloadUrl: string }[] = [];
+    const allUrls: { name: string; sizeData: string; downloadUrl: string }[] = [];
     for (const pageRes of allPageResponses) {
       const files = pageRes.data.data.files as any[];
       files
         .filter((f: any) => f.downloadUrl)
-        .forEach((f: any) => allUrls.push({ name: f.name, sizeFormatted: f.sizeFormatted, downloadUrl: f.downloadUrl }));
+        .forEach((f: any) => allUrls.push({ name: f.name, sizeData: f.sizeData, downloadUrl: f.downloadUrl }));
     }
 
     console.log(`🔗 Collected ${allUrls.length} download URLs (used ${totalPages} quota)`);
@@ -295,12 +295,12 @@ app.get('/api/folders/:id/download-all', async (req: Request, res: Response): Pr
     let failCount = 0;
 
     await Promise.all(
-      allUrls.map(async ({ name, sizeFormatted, downloadUrl }) => {
+      allUrls.map(async ({ name, sizeData, downloadUrl }) => {
         try {
           const fileRes = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
           const filePath = path.join(downloadDir, safeFileName(name));
           fs.writeFileSync(filePath, Buffer.from(fileRes.data));
-          console.log(`  ✅ Downloaded: ${name} (${sizeFormatted})`);
+          console.log(`  ✅ Downloaded: ${name} (${sizeData})`);
           successCount++;
         } catch (err: any) {
           console.error(`  ❌ Failed: ${name} — ${err.message}`);
@@ -356,15 +356,15 @@ app.get('/api/activity-actions', async (_req: Request, res: Response): Promise<a
 
 // ============================================================
 // 8. Activity List — ดึงประวัติกิจกรรม
-// GET /api/activities?page=1&actionKeys=FETCH_FOLDER_LIST&startDate=2024-01-01
+// GET /api/activities?page=1&actionKey=FETCH_FOLDER_LIST&startDate=2024-01-01
 // ============================================================
 app.get('/api/activities', async (req: Request, res: Response): Promise<any> => {
   console.log('\n--- [8] Fetching Activity List ---');
   try {
-    const { page = '1', actionKeys, groupKey, categoryKey, startDate, endDate } = req.query;
+    const { page = '1', actionKey, groupKey, categoryKey, startDate, endDate } = req.query;
 
     const params: Record<string, string> = { page: String(page) };
-    if (actionKeys) params.actionKeys = String(actionKeys);
+    if (actionKey) params.actionKey = String(actionKey);
     if (groupKey) params.groupKey = String(groupKey);
     if (categoryKey) params.categoryKey = String(categoryKey);
     if (startDate) params.startDate = String(startDate);
@@ -376,7 +376,7 @@ app.get('/api/activities', async (req: Request, res: Response): Promise<any> => 
     const { data, pagination, usage } = response.data;
     console.log(`✅ Found ${pagination.total} activities (Page ${pagination.page}/${pagination.totalPages})`);
     data.slice(0, 5).forEach((a: any) => {
-      console.log(`  📋 [${a.action}] by ${a.actor?.fullname || 'System'} at ${a.createdAt}`);
+      console.log(`  📋 [${a.actionKey}] by ${a.actor?.fullname || 'System'} at ${a.createdAt}`);
     });
     if (data.length > 5) console.log(`  ... and ${data.length - 5} more`);
 
@@ -399,8 +399,8 @@ app.get('/api/activities/:id', async (req: Request, res: Response): Promise<any>
     const response = await sstApi.get(`/api/external/activities/${id}`);
     logQuota(response.headers);
 
-    const { data } = response.data;
-    console.log(`✅ Activity: [${data.action}] — ${data.details?.summary}`);
+    const { data, usage } = response.data;
+    console.log(`✅ Activity: [${data.actionKey}] — ${data.details?.summary}`);
     console.log(`   Actor: ${data.actor?.fullname || 'System'} (${data.actor?.userType})`);
     console.log(`   Status: ${data.status}, IP: ${data.ipAddress}`);
 
@@ -591,7 +591,7 @@ app.post('/api/webhook', (req: any, res: Response): any => {
 // โครงสร้างข้อมูลไฟล์แต่ละไฟล์ที่ได้จาก API:
 //   file.name        : ชื่อไฟล์ (เช่น "invoice_001.pdf")
 //   file.mimeType    : ประเภทไฟล์ (เช่น "application/pdf")
-//   file.sizeFormatted: ขนาดไฟล์ (เช่น "1.2 MB")
+//   file.sizeData: ขนาดไฟล์ (เช่น "1.2 MB")
 //   file.downloadUrl : Pre-signed URL สำหรับดาวน์โหลดตรงจาก Storage (หมดอายุใน 1 ชั่วโมง)
 //   file.indexData   : ข้อมูล Key Index ที่คีย์ไว้ (object) เช่น { invoice_no: "INV-001", amount: "5000" }
 //   file.status      : สถานะไฟล์ (ACTIVE)
@@ -663,14 +663,14 @@ async function handleFolderPublished(data: any) {
     //   - mimeType    : ประเภทไฟล์
     //   - downloadUrl : Pre-signed URL (ดาวน์โหลดตรงจาก Storage ไม่ผ่าน server)
     //   - indexData   : ข้อมูล Key Index ที่คีย์ไว้ เช่น { invoice_no: "INV-001" }
-    //   - sizeFormatted: ขนาดไฟล์ที่อ่านง่าย
+    //   - sizeData: ขนาดไฟล์ที่อ่านง่าย
     // -------------------------------------------------------
     const allFiles: {
       name: string;
       downloadUrl: string;
       mimeType: string;
       indexData: Record<string, any>;
-      sizeFormatted: string;
+      sizeData: string;
     }[] = [];
 
     for (const pageRes of allPageResponses) {
@@ -683,7 +683,7 @@ async function handleFolderPublished(data: any) {
             downloadUrl: f.downloadUrl,
             mimeType: f.mimeType,
             indexData: f.indexData || {}, // ข้อมูล Key Index ที่คีย์ไว้
-            sizeFormatted: f.sizeFormatted,
+            sizeData: f.sizeData,
           }),
         );
     }
@@ -703,7 +703,7 @@ async function handleFolderPublished(data: any) {
     // -------------------------------------------------------
 
     for (const file of allFiles) {
-      console.log(`   📄 Processing: ${file.name} (${file.mimeType}, ${file.sizeFormatted})`);
+      console.log(`   📄 Processing: ${file.name} (${file.mimeType}, ${file.sizeData})`);
 
       // แสดง indexData ที่คีย์ไว้ (ข้อมูล Key Index จาก Template)
       if (Object.keys(file.indexData).length > 0) {
