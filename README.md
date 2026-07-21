@@ -103,6 +103,9 @@ curl "http://localhost:4000/api/folders"
 
 # กรองเฉพาะ READY
 curl "http://localhost:4000/api/folders?status=READY&page=1"
+
+# กรองตามช่วงวันที่
+curl "http://localhost:4000/api/folders?startDate=2024-01-01&endDate=2024-12-31"
 ```
 
 **สถานะที่มี:**
@@ -177,8 +180,17 @@ curl "http://localhost:4000/api/activities?page=1"
 # กรองตาม action key (ดู action codes ได้จาก /api/activity-actions)
 curl "http://localhost:4000/api/activities?actionKey=FETCH_FOLDER_LIST,DOWNLOAD_FILE"
 
+# กรองตามหมวดหมู่หรือกลุ่ม
+curl "http://localhost:4000/api/activities?categoryKey=DOCUMENT&groupKey=DOWNLOAD"
+
 # กรองตามช่วงวันที่
 curl "http://localhost:4000/api/activities?startDate=2024-01-01&endDate=2024-12-31"
+```
+
+### ดึงรายละเอียดกิจกรรมเดี่ยว
+
+```bash
+curl "http://localhost:4000/api/activities/ACTIVITY_ID_HERE"
 ```
 
 ### ดู action codes ที่กรองได้
