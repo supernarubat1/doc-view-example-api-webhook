@@ -199,8 +199,7 @@ curl "http://localhost:4000/api/activities/ACTIVITY_ID_HERE"
 curl http://localhost:4000/api/activity-actions
 ```
 
-ใช้ค่าจาก `code` ในผลลัพธ์นี้ไปใส่ใน `?actionKey=` ของ `/api/activities`
-> ถ้ายังมี integration เดิมที่ส่ง `action=` อยู่ simulator รุ่นนี้ยังรับได้ แต่ระบบปัจจุบันจะส่งต่อเป็น `actionKey` ให้ตรงกับ API ล่าสุด
+คุณสามารถนำค่า `code` ที่ได้จาก API นี้ ไปใช้เป็นพารามิเตอร์ `actionKey` สำหรับกรองข้อมูลเมื่อเรียกใช้งาน `/api/activities` (ตัวอย่างเช่น `?actionKey=DOWNLOAD_FILE`)
 
 ---
 
@@ -275,9 +274,10 @@ curl -X DELETE http://localhost:4000/api/webhook-config
 ทุกครั้งที่รับ Webhook ต้องตรวจสอบ `X-Webhook-Signature` ด้วย HMAC SHA256:
 
 ```typescript
-const hmac = crypto.createHmac('sha256', WEBHOOK_SECRET);
-const digest = hmac.update(rawBody).digest('hex');
-if (signature !== digest) return res.status(401).json({ error: 'Invalid signature' });
+const hmac = crypto.createHmac("sha256", WEBHOOK_SECRET);
+const digest = hmac.update(rawBody).digest("hex");
+if (signature !== digest)
+  return res.status(401).json({ error: "Invalid signature" });
 ```
 
 ### 2. ตอบกลับ 200 OK ทันที
@@ -315,21 +315,28 @@ const first = await api.get(`/folders/${id}?page=1`);
 const { totalPages } = first.data.data.filesPagination;
 
 // ดึงหน้าที่เหลือพร้อมกัน
-const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => api.get(`/folders/${id}?page=${i + 2}`)));
+const rest = await Promise.all(
+  Array.from({ length: totalPages - 1 }, (_, i) =>
+    api.get(`/folders/${id}?page=${i + 2}`),
+  ),
+);
 
 // รวมไฟล์ทั้งหมด
-const allFiles = [...first.data.data.files, ...rest.flatMap((r) => r.data.data.files)];
+const allFiles = [
+  ...first.data.data.files,
+  ...rest.flatMap((r) => r.data.data.files),
+];
 ```
 
 ### 5. Webhook Events ที่รองรับ
 
-| Event              | คำอธิบาย                                      |
-| ------------------ | --------------------------------------------- |
-| `FOLDER_PUBLISHED` | โฟลเดอร์ถูกเผยแพร่ — ดึงไฟล์ไปประมวลผลได้เลย  |
-| `FOLDER_EXPIRED`   | โฟลเดอร์หมดอายุ — ลบ cache หรือแจ้งเตือน user |
-| `FOLDER_REVOKED`   | โฟลเดอร์ถูกยกเลิก — ลบ access ฝั่งตัวเอง      |
+| Event              | คำอธิบาย                                       |
+| ------------------ | ---------------------------------------------- |
+| `FOLDER_PUBLISHED` | โฟลเดอร์ถูกเผยแพร่ — ดึงไฟล์ไปประมวลผลได้เลย   |
+| `FOLDER_EXPIRED`   | โฟลเดอร์หมดอายุ — ลบ cache หรือแจ้งเตือน user  |
+| `FOLDER_REVOKED`   | โฟลเดอร์ถูกยกเลิก — ลบ access ฝั่งตัวเอง       |
 | `TEST_CONNECTION`  | ทดสอบ Webhook ผ่าน API/Portal — ตอบกลับ 200 OK |
-| `PING`             | ตรวจสอบการเชื่อมต่อก่อนบันทึก config          |
+| `PING`             | ตรวจสอบการเชื่อมต่อก่อนบันทึก config           |
 
 ---
 
